@@ -160,6 +160,37 @@ def contains_destructive_command(command: str) -> bool:
     return True
 
 
+def rewrite_command(command: str) -> str:
+    """Rewrite a command replacing rm/shred/unlink with trash."""
+    # Split on shell operators, rewrite each sub-command
+    parts = re.split(r"(\s*(?:&&|\|\||;)\s*)", command)
+    rewritten = []
+    for part in parts:
+        stripped_part = part.strip()
+        if not stripped_part or stripped_part in ("&&", "||", ";"):
+            rewritten.append(part)
+            continue
+
+        # Replace rm (with any flags) with trash (flags stripped)
+        new_part = re.sub(
+            r"(?:sudo\s+)?(?:command\s+|env\s+)?(?:\\)?(?:/\S*/)?rm\s+(?:-\w+\s+)*",
+            "trash ",
+            stripped_part,
+        )
+        # Replace shred/unlink with trash
+        new_part = re.sub(r"\bshred\s+(?:-\w+\s+)*", "trash ", new_part)
+        new_part = re.sub(r"\bunlink\s+", "trash ", new_part)
+        # Replace find -delete with find -print (suggest manual review)
+        if re.search(r"\bfind\b.*-delete", new_part):
+            new_part = re.sub(r"\s+-delete\b", " -print  # then pipe to: xargs trash", new_part)
+        if re.search(r"\bfind\b.*-exec\s+rm\b", new_part):
+            new_part = re.sub(r"-exec\s+rm\s+", "-exec trash ", new_part)
+
+        rewritten.append(new_part)
+
+    return "".join(rewritten)
+
+
 def main() -> None:
     try:
         data = json.loads(sys.stdin.read())
@@ -169,16 +200,11 @@ def main() -> None:
             sys.exit(0)
 
         if contains_destructive_command(command):
+            corrected = rewrite_command(command)
             print(
-                "BLOCKED: Destructive file deletion detected. "
-                "Use `trash` instead of `rm`:\n"
-                "  trash file.txt\n"
-                "  trash directory/\n\n"
-                "Allowed exceptions (rm -rf only):\n"
-                "  - /tmp/*, /var/tmp/*\n"
-                "  - __pycache__, .pytest_cache, .mypy_cache, .ruff_cache\n"
-                "  - node_modules, *.egg-info, .tox, .nox\n\n"
-                "If trash is not installed: brew install trash",
+                f"BLOCKED: Use `trash` instead of `rm`.\n"
+                f"Run this instead:\n\n"
+                f"  {corrected}\n",
                 file=sys.stderr,
             )
             sys.exit(2)
