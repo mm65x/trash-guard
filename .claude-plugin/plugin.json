@@ -1,0 +1,20 @@
+{
+  "name": "trash-guard",
+  "version": "1.0.0",
+  "description": "Blocks destructive rm commands and suggests using trash CLI instead",
+  "author": "mm65x",
+  "license": "MIT",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/trash_guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}
