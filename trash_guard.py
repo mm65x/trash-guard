@@ -44,10 +44,28 @@ def strip_quotes(command: str) -> str:
     return stripped
 
 
+def _extract_rm_subcommand(command: str) -> str | None:
+    """Extract the rm sub-command from a potentially chained command."""
+    # Split on shell operators to isolate the rm part
+    parts = re.split(r"\s*(?:&&|\|\||;)\s*", command)
+    for part in parts:
+        part = part.strip()
+        # Check if this sub-command starts with rm (possibly with sudo/env prefix)
+        if re.match(r"(?:sudo\s+|env\s+|command\s+)?(?:\\)?rm\b", part):
+            return part
+        # Check for absolute path rm
+        if re.match(r"(?:sudo\s+)?/.*?/rm\b", part):
+            return part
+    return None
+
+
 def is_allowed_rm(command: str) -> bool:
     """Check if the rm command targets an allowed path or name."""
-    # Extract paths from the command (tokens after rm and its flags)
-    tokens = command.split()
+    rm_cmd = _extract_rm_subcommand(command)
+    if rm_cmd is None:
+        return False
+
+    tokens = rm_cmd.split()
     rm_idx = None
     for i, tok in enumerate(tokens):
         if tok in ("rm", "\\rm") or tok.endswith("/rm"):
